@@ -1,12 +1,12 @@
 [package]
-name = "aoc"
+name = "aoc2020"
 version = "0.1.0"
 authors = ["Thomas ten Cate <ttencate@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+aoc = { "path" = "aoc" }
 regex = "1"
-reqwest = "0.9.5"
 
 [profile.release]
 # Enable debug information in release builds.
