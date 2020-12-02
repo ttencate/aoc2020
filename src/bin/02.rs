@@ -24,10 +24,8 @@ fn part1(input: &str) -> u64 {
 
 #[test]
 fn test_part1() {
-    assert_eq!(part1("1-3 a: abcde
-1-3 b: cdefg
-2-9 c: ccccccccc"), 2);
-    aoc::test(part1, 614);
+    assert_eq!(part1(&aoc::example(0)), 2);
+    assert_eq!(part1(&aoc::input()), 614);
 }
 
 fn part2(input: &str) -> u64 {
@@ -40,10 +38,8 @@ fn part2(input: &str) -> u64 {
 
 #[test]
 fn test_part2() {
-    assert_eq!(part2("1-3 a: abcde
-1-3 b: cdefg
-2-9 c: ccccccccc"), 1);
-    aoc::test(part2, 354);
+    assert_eq!(part2(&aoc::example(0)), 1);
+    assert_eq!(part2(&aoc::input()), 354);
 }
 
 fn main() {

@@ -4,7 +4,8 @@ fn part1(_input: &str) -> String {
 
 #[test]
 fn test_part1() {
-    aoc::test(part1, "TODO".to_string());
+    // assert_eq!(part1(&aoc::example(0)), );
+    // assert_eq!(part1(&aoc::input()), );
 }
 
 fn part2(_input: &str) -> String {
@@ -13,7 +14,8 @@ fn part2(_input: &str) -> String {
 
 #[test]
 fn test_part2() {
-    aoc::test(part2, "TODO".to_string());
+    // assert_eq!(part2(&aoc::example(0)), );
+    // assert_eq!(part2(&aoc::input()), );
 }
 
 fn main() {
