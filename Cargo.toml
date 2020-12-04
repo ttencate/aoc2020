@@ -6,7 +6,8 @@ edition = "2018"
 
 [dependencies]
 aoc = { "path" = "aoc" }
-regex = "1"
+lazy_static = "1.4.0"
+regex = "1.4.2"
 
 [profile.release]
 # Enable debug information in release builds.
