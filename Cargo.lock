@@ -38,6 +38,7 @@ version = "0.1.0"
 dependencies = [
  "aoc",
  "lazy_static",
+ "multiset",
  "regex",
 ]
 
@@ -767,6 +768,12 @@ dependencies = [
  "winapi 0.2.8",
  "ws2_32-sys",
 ]
+
+[[package]]
+name = "multiset"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce8738c9ddd350996cb8b8b718192851df960803764bcdaa3afb44a63b1ddb5c"
 
 [[package]]
 name = "native-tls"
