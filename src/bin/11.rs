@@ -20,18 +20,21 @@ impl From<u8> for Cell {
 struct Board {
     nx: i64,
     ny: i64,
-    cells: Vec<Vec<Cell>>,
+    cells: Vec<Cell>,
 }
 
 impl std::str::FromStr for Board {
     type Err = ();
     fn from_str(input: &str) -> Result<Board, ()> {
+        let mut ny = 0i64;
         let cells = input
             .lines()
-            .map(|line| line.bytes().map(Cell::from).collect())
-            .collect::<Vec<Vec<Cell>>>();
-        let nx = cells[0].len() as i64;
-        let ny = cells.len() as i64;
+            .flat_map(|line| {
+                ny += 1;
+                line.bytes().map(Cell::from)
+            })
+            .collect::<Vec<Cell>>();
+        let nx = cells.len() as i64 / ny;
         Ok(Board { nx, ny, cells })
     }
 }
@@ -45,22 +48,18 @@ impl Board {
 
     fn get(&self, x: i64, y: i64) -> Cell {
         if self.contains(x, y) {
-            self.cells[y as usize][x as usize]
+            self.cells[(y * self.nx + x) as usize]
         } else {
             Cell::Floor
         }
     }
 
     fn step<F: Fn(i64, i64) -> Cell>(&self, f: F) -> Board {
-        let new_cells = (0..self.ny)
-            .map(|y| {
-                (0..self.nx)
-                    .map(|x| {
-                        f(x, y)
-                    })
-                    .collect::<Vec<Cell>>()
+        let new_cells = (0..self.cells.len() as i64)
+            .map(|i| {
+                f(i % self.nx, i / self.nx)
             })
-            .collect::<Vec<Vec<Cell>>>();
+            .collect::<Vec<Cell>>();
         Board { nx: self.nx, ny: self.ny, cells: new_cells }
     }
 
@@ -93,8 +92,8 @@ impl Board {
     fn count(&self, cell: Cell) -> usize {
         self.cells
             .iter()
-            .map(|row| row.iter().filter(|c| **c == cell).count())
-            .sum()
+            .filter(|&&c| c == cell)
+            .count()
     }
 }
 
