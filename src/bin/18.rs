@@ -42,35 +42,46 @@ struct ParseError { idx: usize, msg: String }
 struct Tokenizer<'a> {
     bytes: &'a [u8],
     idx: usize,
+    curr: Token,
 }
 
 impl<'a> Tokenizer<'a> {
-    fn curr(&self) -> Option<char> {
+    pub fn new(input: &str) -> Result<Tokenizer, ParseError> {
+        let mut tok = Tokenizer {
+            bytes: input.as_bytes(),
+            idx: 0,
+            curr: Token::Eol,
+        };
+        tok.advance()?;
+        Ok(tok)
+    }
+
+    fn curr_char(&self) -> Option<char> {
         if self.idx < self.bytes.len() { Some(self.bytes[self.idx] as char) } else { None }
     }
 
-    fn peek(&self) -> Option<char> {
+    fn next_char(&self) -> Option<char> {
         if self.idx + 1 < self.bytes.len() { Some(self.bytes[self.idx + 1] as char) } else { None }
     }
 
-    fn advance(&mut self) {
-        self.idx += 1;
-    }
-
-    fn err(&self, msg: String) -> ParseError {
+    pub fn err(&self, msg: String) -> ParseError {
         ParseError { idx: self.idx, msg }
     }
-}
 
-impl<'a> Iterator for Tokenizer<'a> {
-    type Item = Result<Token, ParseError>;
+    pub fn expected(&self, what: &str) -> ParseError {
+        self.err(format!("expected {}, found '{}'", what, self.curr))
+    }
 
-    fn next(&mut self) -> Option<Result<Token, ParseError>> {
-        while self.curr().map(char::is_whitespace).unwrap_or(false) {
-            self.advance();
+    pub fn curr(&self) -> Token {
+        self.curr
+    }
+
+    pub fn advance(&mut self) -> Result<(), ParseError> {
+        while self.curr_char().map(char::is_whitespace).unwrap_or(false) {
+            self.idx += 1;
         }
         let radix = 10;
-        Some(if let Some(c) = self.curr() {
+        self.curr = if let Some(c) = self.curr_char() {
             let token = match c {
                 '+' => Token::Op(Op::Plus),
                 '*' => Token::Op(Op::Star),
@@ -79,9 +90,9 @@ impl<'a> Iterator for Tokenizer<'a> {
                 d if d.is_digit(radix) => {
                     let mut num = 0;
                     loop {
-                        num = (num * radix as Num) + self.curr().unwrap().to_digit(radix).unwrap() as Num;
-                        if self.peek().map(|d| d.is_digit(radix)).unwrap_or(false) {
-                            self.advance();
+                        num = (num * radix as Num) + self.curr_char().unwrap().to_digit(radix).unwrap() as Num;
+                        if self.next_char().map(|d| d.is_digit(radix)).unwrap_or(false) {
+                            self.idx += 1;
                         } else {
                             break;
                         }
@@ -89,65 +100,40 @@ impl<'a> Iterator for Tokenizer<'a> {
                     Token::Num(num)
                 },
                 _ => {
-                    return Some(Err(self.err(format!("unexpected character: '{}'", c))));
+                    return Err(self.err(format!("unexpected character: '{}'", c)));
                 },
             };
-            self.advance();
-            Ok(token)
+            self.idx += 1;
+            token
         } else {
-            Ok(Token::Eol)
-        })
-    }
-}
-
-fn tokenize(expr: &str) -> Tokenizer {
-    Tokenizer { bytes: expr.as_bytes(), idx: 0 }
-}
-
-struct Lexer<'a> {
-    tok: Tokenizer<'a>,
-    curr: Token,
-}
-
-impl<'a> Lexer<'a> {
-    fn new(line: &str) -> Result<Lexer, ParseError> {
-        let mut tok = tokenize(line);
-        let curr = tok.next().unwrap()?;
-        Ok(Lexer { tok, curr })
+            Token::Eol
+        };
+        Ok(())
     }
 
-    fn eol(&mut self) -> Result<(), ParseError> {
+    pub fn expect_eol(&mut self) -> Result<(), ParseError> {
         match self.curr {
             Token::Eol => Ok(()),
             _ => Err(self.expected("end of line")),
         }
     }
-
-    fn advance(&mut self) -> Result<(), ParseError> {
-        self.curr = self.tok.next().unwrap()?;
-        Ok(())
-    }
-
-    fn expected(&self, what: &str) -> ParseError {
-        self.tok.err(format!("expected {}, found '{}'", what, self.curr))
-    }
 }
 
-struct Eval1<'a> {
-    lexer: Lexer<'a>
+struct Parser1<'a> {
+    tok: Tokenizer<'a>
 }
 
-impl<'a> Eval1<'a> {
+impl<'a> Parser1<'a> {
     fn eval(&mut self) -> Result<Num, ParseError> {
         let num = self.expr()?;
-        self.lexer.eol()?;
+        self.tok.expect_eol()?;
         Ok(num)
     }
 
     fn expr(&mut self) -> Result<Num, ParseError> {
         let mut num = self.term()?;
-        while let Token::Op(op) = self.lexer.curr {
-            self.lexer.advance()?;
+        while let Token::Op(op) = self.tok.curr() {
+            self.tok.advance()?;
             let term = self.term()?;
             match op {
                 Op::Plus => num += term,
@@ -158,22 +144,22 @@ impl<'a> Eval1<'a> {
     }
 
     fn term(&mut self) -> Result<Num, ParseError> {
-        Ok(match self.lexer.curr {
+        Ok(match self.tok.curr() {
             Token::Num(num) => {
-                self.lexer.advance()?;
+                self.tok.advance()?;
                 num
             },
             Token::ParenOpen => {
-                self.lexer.advance()?;
+                self.tok.advance()?;
                 let num = self.expr()?;
-                if self.lexer.curr != Token::ParenClose {
-                    return Err(self.lexer.expected("')'"));
+                if self.tok.curr() != Token::ParenClose {
+                    return Err(self.tok.expected("')'"));
                 }
-                self.lexer.advance()?;
+                self.tok.advance()?;
                 num
             },
             _ => {
-                return Err(self.lexer.expected("number or '('"));
+                return Err(self.tok.expected("number or '('"));
             }
         })
     }
@@ -182,7 +168,7 @@ impl<'a> Eval1<'a> {
 fn part1(input: &str) -> Num {
     input
         .lines()
-        .map(|line| Eval1 { lexer: Lexer::new(line).unwrap() }.eval().unwrap())
+        .map(|line| Parser1 { tok: Tokenizer::new(line).unwrap() }.eval().unwrap())
         .sum()
 }
 
@@ -196,21 +182,21 @@ fn test_part1() {
     assert_eq!(part1(&aoc::input()), 6811433855019);
 }
 
-struct Eval2<'a> {
-    lexer: Lexer<'a>
+struct Parser2<'a> {
+    tok: Tokenizer<'a>
 }
 
-impl<'a> Eval2<'a> {
+impl<'a> Parser2<'a> {
     fn eval(&mut self) -> Result<Num, ParseError> {
         let num = self.product()?;
-        self.lexer.eol()?;
+        self.tok.expect_eol()?;
         Ok(num)
     }
 
     fn product(&mut self) -> Result<Num, ParseError> {
         let mut num = self.sum()?;
-        while let Token::Op(Op::Star) = self.lexer.curr {
-            self.lexer.advance()?;
+        while let Token::Op(Op::Star) = self.tok.curr() {
+            self.tok.advance()?;
             let factor = self.sum()?;
             num *= factor;
         }
@@ -219,8 +205,8 @@ impl<'a> Eval2<'a> {
 
     fn sum(&mut self) -> Result<Num, ParseError> {
         let mut num = self.term()?;
-        while let Token::Op(Op::Plus) = self.lexer.curr {
-            self.lexer.advance()?;
+        while let Token::Op(Op::Plus) = self.tok.curr() {
+            self.tok.advance()?;
             let term = self.term()?;
             num += term;
         }
@@ -228,22 +214,22 @@ impl<'a> Eval2<'a> {
     }
 
     fn term(&mut self) -> Result<Num, ParseError> {
-        Ok(match self.lexer.curr {
+        Ok(match self.tok.curr() {
             Token::Num(num) => {
-                self.lexer.advance()?;
+                self.tok.advance()?;
                 num
             },
             Token::ParenOpen => {
-                self.lexer.advance()?;
+                self.tok.advance()?;
                 let num = self.product()?;
-                if self.lexer.curr != Token::ParenClose {
-                    return Err(self.lexer.expected("')'"));
+                if self.tok.curr() != Token::ParenClose {
+                    return Err(self.tok.expected("')'"));
                 }
-                self.lexer.advance()?;
+                self.tok.advance()?;
                 num
             },
             _ => {
-                return Err(self.lexer.expected("number or '('"));
+                return Err(self.tok.expected("number or '('"));
             }
         })
     }
@@ -252,7 +238,7 @@ impl<'a> Eval2<'a> {
 fn part2(input: &str) -> Num {
     input
         .lines()
-        .map(|line| Eval2 { lexer: Lexer::new(line).unwrap() }.eval().unwrap())
+        .map(|line| Parser2 { tok: Tokenizer::new(line).unwrap() }.eval().unwrap())
         .sum()
 }
 
