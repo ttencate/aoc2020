@@ -104,84 +104,16 @@ fn tokenize(expr: &str) -> Tokenizer {
     Tokenizer { bytes: expr.as_bytes(), idx: 0 }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum Term {
-    Num(Num),
-    Paren(Box<Expr>),
-}
-
-impl std::fmt::Display for Term {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Term::Num(num) => write!(f, "{}", num),
-            Term::Paren(expr) => write!(f, "({})", expr),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum Expr {
-    Chain(Term, Vec<(Op, Term)>),
-}
-
-impl std::fmt::Display for Expr {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Expr::Chain(head, tail) => {
-                write!(f, "({}", head)?;
-                for (op, expr) in tail {
-                    write!(f, " {} {}", op, expr)?;
-                }
-                write!(f, ")")?;
-                Ok(())
-            }
-        }
-    }
-}
-
-struct Parser<'a> {
+struct Lexer<'a> {
     tok: Tokenizer<'a>,
     curr: Token,
-    next: Token,
 }
 
-impl<'a> Parser<'a> {
-    fn parse(&mut self) -> Result<Expr, ParseError> {
-        let expr = self.expr()?;
-        self.eol()?;
-        Ok(expr)
-    }
-
-    fn expr(&mut self) -> Result<Expr, ParseError> {
-        let head = self.term()?;
-        let mut tail = Vec::new();
-        while let Token::Op(op) = self.curr {
-            self.advance()?;
-            let term = self.term()?;
-            tail.push((op, term));
-        }
-        Ok(Expr::Chain(head, tail))
-    }
-
-    fn term(&mut self) -> Result<Term, ParseError> {
-        Ok(match self.curr {
-            Token::Num(num) => {
-                self.advance()?;
-                Term::Num(num)
-            },
-            Token::ParenOpen => {
-                self.advance()?;
-                let expr = self.expr()?;
-                if self.curr != Token::ParenClose {
-                    return Err(self.expected("')'"));
-                }
-                self.advance()?;
-                Term::Paren(Box::new(expr))
-            },
-            _ => {
-                return Err(self.expected("number or '('"));
-            }
-        })
+impl<'a> Lexer<'a> {
+    fn new(line: &str) -> Result<Lexer, ParseError> {
+        let mut tok = tokenize(line);
+        let curr = tok.next().unwrap()?;
+        Ok(Lexer { tok, curr })
     }
 
     fn eol(&mut self) -> Result<(), ParseError> {
@@ -192,8 +124,7 @@ impl<'a> Parser<'a> {
     }
 
     fn advance(&mut self) -> Result<(), ParseError> {
-        self.curr = self.next;
-        self.next = self.tok.next().unwrap()?;
+        self.curr = self.tok.next().unwrap()?;
         Ok(())
     }
 
@@ -202,61 +133,137 @@ impl<'a> Parser<'a> {
     }
 }
 
-fn parse(line: &str) -> Result<Expr, ParseError> {
-    let mut tok = tokenize(line);
-    let curr = tok.next().unwrap()?;
-    let next = tok.next().unwrap()?;
-    let mut parser = Parser { tok, curr, next };
-    parser.parse()
+struct Eval1<'a> {
+    lexer: Lexer<'a>
 }
 
-fn eval_term(term: &Term) -> Num {
-    match term {
-        Term::Num(num) => *num,
-        Term::Paren(expr) => eval(expr),
+impl<'a> Eval1<'a> {
+    fn eval(&mut self) -> Result<Num, ParseError> {
+        let num = self.expr()?;
+        self.lexer.eol()?;
+        Ok(num)
     }
-}
 
-fn eval(expr: &Expr) -> Num {
-    match expr {
-        Expr::Chain(head, tail) => {
-            let mut num = eval_term(head);
-            for (op, term) in tail {
-                match op {
-                    Op::Plus => num += eval_term(term),
-                    Op::Star => num *= eval_term(term),
-                }
+    fn expr(&mut self) -> Result<Num, ParseError> {
+        let mut num = self.term()?;
+        while let Token::Op(op) = self.lexer.curr {
+            self.lexer.advance()?;
+            let term = self.term()?;
+            match op {
+                Op::Plus => num += term,
+                Op::Star => num *= term,
             }
-            num
-        },
+        }
+        Ok(num)
+    }
+
+    fn term(&mut self) -> Result<Num, ParseError> {
+        Ok(match self.lexer.curr {
+            Token::Num(num) => {
+                self.lexer.advance()?;
+                num
+            },
+            Token::ParenOpen => {
+                self.lexer.advance()?;
+                let num = self.expr()?;
+                if self.lexer.curr != Token::ParenClose {
+                    return Err(self.lexer.expected("')'"));
+                }
+                self.lexer.advance()?;
+                num
+            },
+            _ => {
+                return Err(self.lexer.expected("number or '('"));
+            }
+        })
     }
 }
 
 fn part1(input: &str) -> Num {
     input
         .lines()
-        .map(|line| eval(&parse(line).unwrap()))
+        .map(|line| Eval1 { lexer: Lexer::new(line).unwrap() }.eval().unwrap())
         .sum()
 }
 
 #[test]
 fn test_part1() {
-    assert_eq!(eval(&parse("1 + 2 * 3 + 4 * 5 + 6").unwrap()), 71);
-    assert_eq!(eval(&parse("2 * 3 + (4 * 5)").unwrap()), 26);
-    assert_eq!(eval(&parse("5 + (8 * 3 + 9 + 3 * 4 * 3)").unwrap()), 437);
-    assert_eq!(eval(&parse("5 * 9 * (7 * 3 * 3 + 9 * 3 + (8 + 6 * 4))").unwrap()), 12240);
-    assert_eq!(eval(&parse("((2 + 4 * 9) * (6 + 9 * 8 + 6) + 6) + 2 + 4 * 2").unwrap()), 13632);
+    assert_eq!(part1("1 + 2 * 3 + 4 * 5 + 6"), 71);
+    assert_eq!(part1("2 * 3 + (4 * 5)"), 26);
+    assert_eq!(part1("5 + (8 * 3 + 9 + 3 * 4 * 3)"), 437);
+    assert_eq!(part1("5 * 9 * (7 * 3 * 3 + 9 * 3 + (8 + 6 * 4))"), 12240);
+    assert_eq!(part1("((2 + 4 * 9) * (6 + 9 * 8 + 6) + 6) + 2 + 4 * 2"), 13632);
     assert_eq!(part1(&aoc::input()), 6811433855019);
 }
 
-fn part2(_input: &str) -> String {
-    "TODO".to_string()
+struct Eval2<'a> {
+    lexer: Lexer<'a>
+}
+
+impl<'a> Eval2<'a> {
+    fn eval(&mut self) -> Result<Num, ParseError> {
+        let num = self.product()?;
+        self.lexer.eol()?;
+        Ok(num)
+    }
+
+    fn product(&mut self) -> Result<Num, ParseError> {
+        let mut num = self.sum()?;
+        while let Token::Op(Op::Star) = self.lexer.curr {
+            self.lexer.advance()?;
+            let factor = self.sum()?;
+            num *= factor;
+        }
+        Ok(num)
+    }
+
+    fn sum(&mut self) -> Result<Num, ParseError> {
+        let mut num = self.term()?;
+        while let Token::Op(Op::Plus) = self.lexer.curr {
+            self.lexer.advance()?;
+            let term = self.term()?;
+            num += term;
+        }
+        Ok(num)
+    }
+
+    fn term(&mut self) -> Result<Num, ParseError> {
+        Ok(match self.lexer.curr {
+            Token::Num(num) => {
+                self.lexer.advance()?;
+                num
+            },
+            Token::ParenOpen => {
+                self.lexer.advance()?;
+                let num = self.product()?;
+                if self.lexer.curr != Token::ParenClose {
+                    return Err(self.lexer.expected("')'"));
+                }
+                self.lexer.advance()?;
+                num
+            },
+            _ => {
+                return Err(self.lexer.expected("number or '('"));
+            }
+        })
+    }
+}
+
+fn part2(input: &str) -> Num {
+    input
+        .lines()
+        .map(|line| Eval2 { lexer: Lexer::new(line).unwrap() }.eval().unwrap())
+        .sum()
 }
 
 #[test]
 fn test_part2() {
-    // assert_eq!(part2(&aoc::example(0)), );
-    // assert_eq!(part2(&aoc::input()), );
+    assert_eq!(part2("1 + (2 * 3) + (4 * (5 + 6))"), 51);
+    assert_eq!(part2("2 * 3 + (4 * 5)"), 46);
+    assert_eq!(part2("5 + (8 * 3 + 9 + 3 * 4 * 3)"), 1445);
+    assert_eq!(part2("5 * 9 * (7 * 3 * 3 + 9 * 3 + (8 + 6 * 4))"), 669060);
+    assert_eq!(part2("((2 + 4 * 9) * (6 + 9 * 8 + 6) + 6) + 2 + 4 * 2"), 23340);
+    assert_eq!(part2(&aoc::input()), 129770152447927);
 }
 
 fn main() {
