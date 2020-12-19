@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 aoc = { "path" = "aoc" }
 bit-set = "0.5.2"
+itertools = "0.9.0"
 lazy_static = "1.4.0"
 multiset = "0.0.5"
 packed_simd = { version = "0.3.4", package = "packed_simd_2" }
