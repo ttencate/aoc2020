@@ -19,7 +19,7 @@ fn build_re(rules: &HashMap<usize, Rule>, cache: &mut HashMap<usize, String>, na
                             .join("")
                     })
                 .join("|");
-                format!("({})", re)
+                format!("(?:{})", re)
             }
         };
         cache.insert(name, re);
@@ -71,14 +71,39 @@ fn test_part1() {
     assert_eq!(part1(&aoc::input()), 230);
 }
 
-fn part2(_input: &str) -> String {
-    "TODO".to_string()
+fn part2(input: &str) -> usize {
+    let mut lines = input.lines();
+    let rules = parse_rules(&mut lines);
+    let mut cache = HashMap::new();
+    let re42_str = build_re(&rules, &mut cache, 42);
+    let re31_str = build_re(&rules, &mut cache, 31);
+    let re42 = Regex::new(&re42_str).unwrap();
+    let re31 = Regex::new(&re31_str).unwrap();
+    let re_fst = Regex::new(&format!("^(?:{})+$", re42)).unwrap();
+    let re_snd = Regex::new(&format!("^(?:{})+$", re31)).unwrap();
+    lines
+        .filter(|line| {
+            for i in 0..line.len() {
+                let fst = &line[0..i];
+                let snd = &line[i..];
+                if re_fst.is_match(fst) && re_snd.is_match(snd) {
+                    let re42_cnt = re42.find_iter(fst).count();
+                    let re31_cnt = re31.find_iter(snd).count();
+                    if re42_cnt > re31_cnt {
+                        return true;
+                    }
+                }
+            }
+            false
+        })
+        .count()
 }
 
 #[test]
 fn test_part2() {
-    // assert_eq!(part2(&aoc::example(0)), );
-    // assert_eq!(part2(&aoc::input()), );
+    assert_eq!(part1(&aoc::example(4)), 3);
+    assert_eq!(part2(&aoc::example(4)), 12);
+    assert_eq!(part2(&aoc::input()), 341);
 }
 
 fn main() {
