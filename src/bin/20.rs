@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 type TileId = u64;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -31,19 +29,19 @@ impl<T: Copy> Grid<T> {
     }
 
     fn transformed(&self, t: Transformation) -> Grid<T> {
-        let (m00, m01, m02, mut m10, mut m11, mut m12) = match t.rotation {
+        let (m00, m01, m02, mut m10, mut m11, mut m12) = match t.rotation() {
             0 => (1, 0, 0, 0, 1, 0),
             1 => (0, 1, 0, -1, 0, self.nx - 1),
             2 => (-1, 0, self.nx - 1, 0, -1, self.ny - 1),
             3 => (0, -1, self.ny - 1, 1, 0, 0),
             _ => panic!(),
         };
-        if t.flipped {
+        if t.flipped() {
             m10 = -m10;
             m11 = -m11;
             m12 = self.ny - 1 - m12;
         }
-        let (nx, ny) = match t.rotation {
+        let (nx, ny) = match t.rotation() {
             0 | 2 => (self.nx, self.ny),
             1 | 3 => (self.ny, self.nx),
             _ => panic!(),
@@ -70,6 +68,7 @@ impl<T: Copy> Grid<T> {
 }
 
 struct Tile {
+    id: u64,
     grid: Grid<u8>,
     left_edge: u64,
     right_edge: u64,
@@ -78,7 +77,11 @@ struct Tile {
 }
 
 impl Tile {
-    fn parse<'a>(lines: impl Iterator<Item = &'a str>) -> Tile {
+    fn parse<'a>(mut lines: impl Iterator<Item = &'a str>) -> Tile {
+        let id = lines.next().unwrap()
+            .split(" ").nth(1).unwrap()
+            .trim_end_matches(":").parse::<TileId>().unwrap();
+
         let mut lines = lines.peekable();
         let nx = lines.peek().unwrap().len();
         let cells = lines
@@ -88,10 +91,11 @@ impl Tile {
         let ny = cells.len() / nx;
         assert_eq!(cells.len(), nx * ny);
         let grid = Grid { nx: nx as i64, ny: ny as i64, cells };
-        Tile::new(grid)
+
+        Tile::new(id, grid)
     }
 
-    fn new(grid: Grid<u8>) -> Tile {
+    fn new(id: u64, grid: Grid<u8>) -> Tile {
         let left_edge = (0..grid.ny)
             .map(|y| if *grid.at(0, y) == b'#' { 1 << y } else { 0 })
             .fold(0, |a, b| a | b);
@@ -105,6 +109,7 @@ impl Tile {
             .map(|x| if *grid.at(x, grid.ny - 1) == b'#' { 1 << x } else { 0 })
             .fold(0, |a, b| a | b);
         Tile {
+            id,
             grid,
             left_edge,
             right_edge,
@@ -114,90 +119,81 @@ impl Tile {
     }
 
     fn transformed(&self, t: Transformation) -> Tile {
-        Tile::new(self.grid.transformed(t))
+        Tile::new(self.id, self.grid.transformed(t))
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-struct Transformation {
-    rotation: usize,
-    flipped: bool,
-}
+struct Transformation(usize);
 
 static ALL_TRANSFORMATIONS: [Transformation; 8] = [
-    Transformation { rotation: 0, flipped: false },
-    Transformation { rotation: 1, flipped: false },
-    Transformation { rotation: 2, flipped: false },
-    Transformation { rotation: 3, flipped: false },
-    Transformation { rotation: 0, flipped: true },
-    Transformation { rotation: 1, flipped: true },
-    Transformation { rotation: 2, flipped: true },
-    Transformation { rotation: 3, flipped: true },
+    Transformation(0),
+    Transformation(1),
+    Transformation(2),
+    Transformation(3),
+    Transformation(4),
+    Transformation(5),
+    Transformation(6),
+    Transformation(7),
 ];
 
 impl Transformation {
-    fn identity() -> Transformation {
-        Transformation { rotation: 0, flipped: false }
-    }
-
     fn all() -> &'static [Transformation] {
         &ALL_TRANSFORMATIONS
     }
+
+    fn from_index(idx: usize) -> Transformation {
+        assert!(idx < 8);
+        Transformation(idx)
+    }
+
+    fn rotation(&self) -> usize {
+        self.0 & 0b11
+    }
+
+    fn flipped(&self) -> bool {
+        (self.0 & 0b100) != 0
+    }
 }
 
-fn parse(input: &str) -> Vec<(TileId, Tile)> {
+fn parse(input: &str) -> Vec<Tile> {
     input.split("\n\n")
-        .filter_map(|tile| {
-            if tile.is_empty() {
-                return None;
-            }
-            let mut lines = tile.lines();
-            let id = lines.next().unwrap()
-                .split(" ").nth(1).unwrap()
-                .trim_end_matches(":").parse::<TileId>().unwrap();
-            let tile = Tile::parse(lines);
-            Some((id, tile))
-        })
+        .filter(|block| !block.is_empty())
+        .map(|block| Tile::parse(block.lines()))
         .collect()
 }
 
 struct Solver {
-    tile_ids: Vec<TileId>,
-    transformed_tiles: HashMap<TileId, HashMap<Transformation, Tile>>,
+    transformed_tiles: Vec<Vec<Tile>>,
 }
 
 struct SolveState {
-    unused_tile_ids: Vec<TileId>,
-    solution: Grid<(TileId, Transformation)>,
+    unused_tile_indices: Vec<usize>,
+    solution: Grid<(usize, usize)>,
 }
 
 impl Solver {
-    fn new(tiles: &[(TileId, Tile)]) -> Solver {
-        let tile_ids = tiles
-            .iter()
-            .map(|(id, _)| *id)
-            .collect();
-
+    fn new(tiles: &[Tile]) -> Solver {
         let transformed_tiles = tiles
             .iter()
-            .map(|(id, tile)| {
-                (*id, Transformation::all().iter().map(|&t| (t, tile.transformed(t))).collect())
+            .map(|tile| {
+                Transformation::all().iter().map(|&t| tile.transformed(t)).collect()
             })
-            .collect::<HashMap<TileId, HashMap<Transformation, Tile>>>();
+            .collect::<Vec<Vec<Tile>>>();
 
-        Solver { tile_ids, transformed_tiles }
+        Solver { transformed_tiles }
     }
 
-    fn solve(&self) -> Grid<(TileId, Transformation)> {
-        let unused_tile_ids = self.tile_ids.clone();
+    fn solve(&self) -> Grid<(usize, usize)> {
+        let unused_tile_indices = (0..self.transformed_tiles.len()).collect();
 
         let n = self.transformed_tiles.len();
         let nx = (n as f64).sqrt().floor() as usize;
         let ny = nx;
         assert_eq!(n, nx * ny);
-        let solution = Grid::new(nx as i64, ny as i64, (0, Transformation::identity()));
+        let solution = Grid::new(nx as i64, ny as i64, (0, 0));
 
-        let mut state = SolveState { unused_tile_ids, solution };
+        let mut state = SolveState { unused_tile_indices, solution };
 
         if !self.solve_rec(&mut state, 0, 0) {
             panic!();
@@ -210,10 +206,10 @@ impl Solver {
         if y >= state.solution.ny {
             return true;
         }
-        let num_unused = state.unused_tile_ids.len();
+        let num_unused = state.unused_tile_indices.len();
         for i in 0..num_unused {
-            let tile_id = state.unused_tile_ids[i];
-            for (&t, tile) in self.transformed_tiles.get(&tile_id).unwrap() {
+            let tile_idx = state.unused_tile_indices[i];
+            for (t_idx, tile) in self.transformed_tiles[tile_idx].iter().enumerate() {
                 if y > 0 {
                     let tile_top = self.tile_at(state, x, y - 1);
                     if tile.top_edge != tile_top.bottom_edge {
@@ -226,26 +222,26 @@ impl Solver {
                         continue;
                     }
                 }
-                *state.solution.at_mut(x, y) = (tile_id, t);
+                *state.solution.at_mut(x, y) = (tile_idx, t_idx);
                 let (next_x, next_y) = if x + 1 == state.solution.nx {
                     (0, y + 1)
                 } else {
                     (x + 1, y)
                 };
-                state.unused_tile_ids.swap_remove(i);
+                state.unused_tile_indices.swap_remove(i);
                 if self.solve_rec(state, next_x, next_y) {
                     return true;
                 }
-                state.unused_tile_ids.push(tile_id);
-                state.unused_tile_ids.swap(i, num_unused - 1);
+                state.unused_tile_indices.push(tile_idx);
+                state.unused_tile_indices.swap(i, num_unused - 1);
             }
         }
         false
     }
 
     fn tile_at(&self, state: &SolveState, x: i64, y: i64) -> &Tile {
-        let (id, t) = state.solution.at(x, y);
-        self.transformed_tiles.get(&id).unwrap().get(&t).unwrap()
+        let &(tile_idx, t_idx) = state.solution.at(x, y);
+        &self.transformed_tiles[tile_idx][t_idx]
     }
 }
 
@@ -255,7 +251,7 @@ fn part1(input: &str) -> u64 {
 
     [(0, 0), (solution.nx - 1, 0), (0, solution.ny - 1), (solution.nx - 1, solution.ny - 1)]
         .iter()
-        .map(|&(x, y)| solution.at(x, y).0)
+        .map(|&(x, y)| tiles[solution.at(x, y).0].id)
         .product()
 }
 
@@ -268,13 +264,13 @@ fn test_part1() {
 fn part2(input: &str) -> usize {
     let tiles = parse(input);
     let solution = Solver::new(&tiles).solve();
-    let tile_size = tiles[0].1.grid.nx;
+    let tile_size = tiles[0].grid.nx;
     let stride = tile_size - 2;
     let mut grid = Grid::new(solution.nx * stride, solution.ny * stride, b' ');
     for y in 0..solution.ny {
         for x in 0..solution.nx {
-            let &(tile_id, t) = solution.at(x, y);
-            let transformed_tile = tiles.iter().find(|(id, _)| *id == tile_id).unwrap().1.transformed(t);
+            let &(tile_idx, t_idx) = solution.at(x, y);
+            let transformed_tile = tiles[tile_idx].transformed(Transformation::from_index(t_idx));
             grid.draw(&transformed_tile.grid, x * stride, y * stride, 1, 1, stride, stride);
         }
     }
