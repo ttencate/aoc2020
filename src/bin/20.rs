@@ -69,7 +69,13 @@ impl<T: Copy> Grid<T> {
     }
 }
 
-type Tile = Grid<u8>;
+struct Tile {
+    grid: Grid<u8>,
+    left_edge: u64,
+    right_edge: u64,
+    top_edge: u64,
+    bottom_edge: u64,
+}
 
 impl Tile {
     fn parse<'a>(lines: impl Iterator<Item = &'a str>) -> Tile {
@@ -81,31 +87,34 @@ impl Tile {
             .collect::<Vec<u8>>();
         let ny = cells.len() / nx;
         assert_eq!(cells.len(), nx * ny);
-        Tile { nx: nx as i64, ny: ny as i64, cells }
+        let grid = Grid { nx: nx as i64, ny: ny as i64, cells };
+        Tile::new(grid)
     }
 
-    fn left_edge(&self) -> u64 {
-        (0..self.ny)
-            .map(|y| if *self.at(0, y) == b'#' { 1 << y } else { 0 })
-            .fold(0, |a, b| a | b)
+    fn new(grid: Grid<u8>) -> Tile {
+        let left_edge = (0..grid.ny)
+            .map(|y| if *grid.at(0, y) == b'#' { 1 << y } else { 0 })
+            .fold(0, |a, b| a | b);
+        let right_edge = (0..grid.ny)
+            .map(|y| if *grid.at(grid.nx - 1, y) == b'#' { 1 << y } else { 0 })
+            .fold(0, |a, b| a | b);
+        let top_edge = (0..grid.nx)
+            .map(|x| if *grid.at(x, 0) == b'#' { 1 << x } else { 0 })
+            .fold(0, |a, b| a | b);
+        let bottom_edge = (0..grid.nx)
+            .map(|x| if *grid.at(x, grid.ny - 1) == b'#' { 1 << x } else { 0 })
+            .fold(0, |a, b| a | b);
+        Tile {
+            grid,
+            left_edge,
+            right_edge,
+            top_edge,
+            bottom_edge,
+        }
     }
 
-    fn right_edge(&self) -> u64 {
-        (0..self.ny)
-            .map(|y| if *self.at(self.nx - 1, y) == b'#' { 1 << y } else { 0 })
-            .fold(0, |a, b| a | b)
-    }
-
-    fn top_edge(&self) -> u64 {
-        (0..self.nx)
-            .map(|x| if *self.at(x, 0) == b'#' { 1 << x } else { 0 })
-            .fold(0, |a, b| a | b)
-    }
-
-    fn bottom_edge(&self) -> u64 {
-        (0..self.nx)
-            .map(|x| if *self.at(x, self.ny - 1) == b'#' { 1 << x } else { 0 })
-            .fold(0, |a, b| a | b)
+    fn transformed(&self, t: Transformation) -> Tile {
+        Tile::new(self.grid.transformed(t))
     }
 }
 
@@ -211,14 +220,14 @@ impl Solver {
             }
             for (&t, tile) in self.transformed_tiles.get(&tile_id).unwrap() {
                 if y > 0 {
-                    let tile_above = self.tile_at(state, x, y - 1);
-                    if tile.top_edge() != tile_above.bottom_edge() {
+                    let tile_top = self.tile_at(state, x, y - 1);
+                    if tile.top_edge != tile_top.bottom_edge {
                         continue;
                     }
                 }
                 if x > 0 {
                     let tile_left = self.tile_at(state, x - 1, y);
-                    if tile.left_edge() != tile_left.right_edge() {
+                    if tile.left_edge != tile_left.right_edge {
                         continue;
                     }
                 }
@@ -263,14 +272,14 @@ fn test_part1() {
 fn part2(input: &str) -> usize {
     let tiles = parse(input);
     let solution = Solver::new(&tiles).solve();
-    let tile_size = tiles[0].1.nx;
+    let tile_size = tiles[0].1.grid.nx;
     let stride = tile_size - 2;
     let mut grid = Grid::new(solution.nx * stride, solution.ny * stride, b' ');
     for y in 0..solution.ny {
         for x in 0..solution.nx {
             let &(tile_id, t) = solution.at(x, y);
             let transformed_tile = tiles.iter().find(|(id, _)| *id == tile_id).unwrap().1.transformed(t);
-            grid.draw(&transformed_tile, x * stride, y * stride, 1, 1, stride, stride);
+            grid.draw(&transformed_tile.grid, x * stride, y * stride, 1, 1, stride, stride);
         }
     }
 
