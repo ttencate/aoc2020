@@ -167,7 +167,7 @@ struct Solver {
 }
 
 struct SolveState {
-    used_tile_ids: Vec<(TileId, bool)>,
+    unused_tile_ids: Vec<TileId>,
     solution: Grid<(TileId, Transformation)>,
 }
 
@@ -189,10 +189,7 @@ impl Solver {
     }
 
     fn solve(&self) -> Grid<(TileId, Transformation)> {
-        let used_tile_ids = self.tile_ids
-            .iter()
-            .map(|&id| (id, false))
-            .collect();
+        let unused_tile_ids = self.tile_ids.clone();
 
         let n = self.transformed_tiles.len();
         let nx = (n as f64).sqrt().floor() as usize;
@@ -200,7 +197,7 @@ impl Solver {
         assert_eq!(n, nx * ny);
         let solution = Grid::new(nx as i64, ny as i64, (0, Transformation::identity()));
 
-        let mut state = SolveState { used_tile_ids, solution };
+        let mut state = SolveState { unused_tile_ids, solution };
 
         if !self.solve_rec(&mut state, 0, 0) {
             panic!();
@@ -213,11 +210,9 @@ impl Solver {
         if y >= state.solution.ny {
             return true;
         }
-        for i in 0..state.used_tile_ids.len() {
-            let (tile_id, used) = state.used_tile_ids[i];
-            if used {
-                continue;
-            }
+        let num_unused = state.unused_tile_ids.len();
+        for i in 0..num_unused {
+            let tile_id = state.unused_tile_ids[i];
             for (&t, tile) in self.transformed_tiles.get(&tile_id).unwrap() {
                 if y > 0 {
                     let tile_top = self.tile_at(state, x, y - 1);
@@ -237,11 +232,12 @@ impl Solver {
                 } else {
                     (x + 1, y)
                 };
-                state.used_tile_ids[i].1 = true;
+                state.unused_tile_ids.swap_remove(i);
                 if self.solve_rec(state, next_x, next_y) {
                     return true;
                 }
-                state.used_tile_ids[i].1 = false;
+                state.unused_tile_ids.push(tile_id);
+                state.unused_tile_ids.swap(i, num_unused - 1);
             }
         }
         false
