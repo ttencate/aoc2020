@@ -145,6 +145,7 @@ fn parse(input: &str) -> Vec<(TileId, Tile)> {
 }
 
 struct Solver {
+    tile_ids: Vec<TileId>,
     transformed_tiles: HashMap<TileId, HashMap<Transformation, Tile>>,
 }
 
@@ -155,6 +156,11 @@ struct SolveState {
 
 impl Solver {
     fn new(tiles: &[(TileId, Tile)]) -> Solver {
+        let tile_ids = tiles
+            .iter()
+            .map(|(id, _)| *id)
+            .collect();
+
         let transformed_tiles = tiles
             .iter()
             .map(|(id, tile)| {
@@ -162,12 +168,12 @@ impl Solver {
             })
             .collect::<HashMap<TileId, HashMap<Transformation, Tile>>>();
 
-        Solver { transformed_tiles }
+        Solver { tile_ids, transformed_tiles }
     }
 
     fn solve(&self) -> Grid<(TileId, Transformation)> {
-        let used_tile_ids = self.transformed_tiles
-            .keys()
+        let used_tile_ids = self.tile_ids
+            .iter()
             .map(|&id| (id, false))
             .collect();
 
