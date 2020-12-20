@@ -260,27 +260,31 @@ fn part2(input: &str) -> usize {
         }
     }
 
-    let sea_monster = Tile::parse("                  # \n#    ##    ##    ###\n #  #  #  #  #  #   ".lines());
+    let (sea_monster_nx, sea_monster_ny) = (20, 3);
+    let sea_monster = "                  # \n#    ##    ##    ###\n #  #  #  #  #  #   "
+        .lines()
+        .enumerate()
+        .flat_map(|(y, line)| {
+            line
+                .bytes()
+                .enumerate()
+                .filter_map(move |(x, c)| if c == b'#' { Some((x as i64, y as i64)) } else { None })
+        })
+        .collect::<Vec<(i64, i64)>>();
 
     Transformation::all()
         .iter()
         .map(|&t| {
             let mut transformed_grid = grid.transformed(t);
-            for y in 0..(transformed_grid.ny - sea_monster.ny) {
-                'next_x: for x in 0..(transformed_grid.nx - sea_monster.nx) {
-                    for my in 0..sea_monster.ny {
-                        for mx in 0..sea_monster.nx {
-                            if *sea_monster.at(mx, my) == b'#' && *transformed_grid.at(x + mx, y + my) != b'#' {
-                                continue 'next_x;
-                            }
+            for y in 0..(transformed_grid.ny - sea_monster_ny) {
+                'next_x: for x in 0..(transformed_grid.nx - sea_monster_nx) {
+                    for &(mx, my) in sea_monster.iter() {
+                        if *transformed_grid.at(x + mx, y + my) != b'#' {
+                            continue 'next_x;
                         }
                     }
-                    for my in 0..sea_monster.ny {
-                        for mx in 0..sea_monster.nx {
-                            if *sea_monster.at(mx, my) == b'#' {
-                                *transformed_grid.at_mut(x + mx, y + my) = b'O';
-                            }
-                        }
+                    for &(mx, my) in sea_monster.iter() {
+                        *transformed_grid.at_mut(x + mx, y + my) = b'O';
                     }
                 }
             }
@@ -295,7 +299,7 @@ fn part2(input: &str) -> usize {
 #[test]
 fn test_part2() {
     assert_eq!(part2(&aoc::example(0)), 273);
-    // assert_eq!(part2(&aoc::input()), );
+    assert_eq!(part2(&aoc::input()), 2146);
 }
 
 fn main() {
