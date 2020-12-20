@@ -67,22 +67,6 @@ impl<T: Copy> Grid<T> {
             }
         }
     }
-
-    fn left_edge(&self) -> Vec<T> {
-        (0..self.ny).map(|y| *self.at(0, y)).collect()
-    }
-
-    fn right_edge(&self) -> Vec<T> {
-        (0..self.ny).map(|y| *self.at(self.nx - 1, y)).collect()
-    }
-
-    fn top_edge(&self) -> Vec<T> {
-        (0..self.nx).map(|x| *self.at(x, 0)).collect()
-    }
-
-    fn bottom_edge(&self) -> Vec<T> {
-        (0..self.nx).map(|x| *self.at(x, self.ny - 1)).collect()
-    }
 }
 
 type Tile = Grid<u8>;
@@ -98,6 +82,30 @@ impl Tile {
         let ny = cells.len() / nx;
         assert_eq!(cells.len(), nx * ny);
         Tile { nx: nx as i64, ny: ny as i64, cells }
+    }
+
+    fn left_edge(&self) -> u64 {
+        (0..self.ny)
+            .map(|y| if *self.at(0, y) == b'#' { 1 << y } else { 0 })
+            .fold(0, |a, b| a | b)
+    }
+
+    fn right_edge(&self) -> u64 {
+        (0..self.ny)
+            .map(|y| if *self.at(self.nx - 1, y) == b'#' { 1 << y } else { 0 })
+            .fold(0, |a, b| a | b)
+    }
+
+    fn top_edge(&self) -> u64 {
+        (0..self.nx)
+            .map(|x| if *self.at(x, 0) == b'#' { 1 << x } else { 0 })
+            .fold(0, |a, b| a | b)
+    }
+
+    fn bottom_edge(&self) -> u64 {
+        (0..self.nx)
+            .map(|x| if *self.at(x, self.ny - 1) == b'#' { 1 << x } else { 0 })
+            .fold(0, |a, b| a | b)
     }
 }
 
