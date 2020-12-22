@@ -1,8 +1,6 @@
 use packed_simd::{shuffle, Simd};
 use std::collections::HashSet;
-use std::fmt::{Debug, Formatter};
 use std::hash::{BuildHasherDefault, Hash, Hasher};
-use std::iter::FromIterator;
 
 type Card = u8;
 
@@ -13,165 +11,203 @@ const DECK_SIZE: usize = 64;
 
 type Cards = Simd<[Card; DECK_SIZE]>;
 
-// Like VecDeque but fixed size, so no indirection needed.
-#[derive(Clone)]
-struct Deck {
+#[derive(Clone, PartialEq, Eq)]
+struct Decks {
     cards: Cards,
 }
 
 const NO_CARDS: Cards = Cards::splat(NO_CARD);
 
-const CARD_INDICES: Cards = Cards::new(
+const CARD_INDICES_0: Cards = Cards::new(
     00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15,
     16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
     32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
     48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63);
 
-impl FromIterator<Card> for Deck {
-    fn from_iter<I: IntoIterator<Item = Card>>(iter: I) -> Deck {
-        let mut iter = iter.into_iter();
-        let mut i = 0;
-        let mut cards = NO_CARDS;
-        while let Some(card) = iter.next() {
-            cards = cards.replace(i, card);
-            i += 1;
+const CARD_INDICES_1: Cards = Cards::new(
+    63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48,
+    47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32,
+    31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16,
+    15, 14, 13, 12, 11, 10, 09, 08, 07, 06, 05, 04, 03, 02, 01, 00);
+
+impl Decks {
+    fn parse(input: &str) -> Decks {
+        let mut blocks = input.split("\n\n");
+        let cards_0 = blocks.next().unwrap()
+            .lines().skip(1)
+            .map(|line| line.parse::<Card>().unwrap())
+            .enumerate()
+            .fold(NO_CARDS, |cards, (i, card)| cards.replace(i, card));
+        let cards_1 = blocks.next().unwrap()
+            .lines().skip(1)
+            .map(|line| line.parse::<Card>().unwrap())
+            .enumerate()
+            .fold(NO_CARDS, |cards, (i, card)| cards.replace(DECK_SIZE - 1 - i, card));
+        Decks { cards: cards_0 | cards_1 }
+    }
+
+    #[cfg(test)]
+    fn new(cards_0: &[Card], cards_1: &[Card]) -> Decks {
+        let mut cards = [NO_CARD; 64];
+        for (i, &card) in cards_0.iter().enumerate() {
+            cards[i] = card;
         }
-        debug_assert!(i < DECK_SIZE - 1);
-        Deck {
-            cards,
+        for (i, &card) in cards_1.iter().enumerate() {
+            debug_assert!(cards[DECK_SIZE - 1 - i] == NO_CARD);
+            cards[DECK_SIZE - 1 - i] = card;
         }
+        Decks { cards: Cards::from_slice_unaligned(&cards) }
+    }
+
+    fn is_any_empty(&self) -> bool {
+        self.is_empty_0() || self.is_empty_1()
+    }
+
+    fn is_empty_0(&self) -> bool {
+        self.cards.extract(0) == NO_CARD
+    }
+
+    fn is_empty_1(&self) -> bool {
+        self.cards.extract(DECK_SIZE - 1) == NO_CARD
+    }
+
+    fn len_0(&self) -> u32 {
+        self.cards.ne(NO_CARDS).bitmask().trailing_ones()
+    }
+
+    fn len_1(&self) -> u32 {
+        self.cards.ne(NO_CARDS).bitmask().leading_ones()
+    }
+
+    fn cards_0(&self) -> Vec<Card> {
+        let mut cards = [NO_CARD; DECK_SIZE];
+        self.cards.write_to_slice_unaligned(&mut cards);
+        cards.iter().copied().take_while(|&card| card != NO_CARD).collect()
+    }
+
+    fn cards_1(&self) -> Vec<Card> {
+        let mut cards = [NO_CARD; DECK_SIZE];
+        self.cards.write_to_slice_unaligned(&mut cards);
+        cards.iter().copied().rev().take_while(|&card| card != NO_CARD).collect()
+    }
+
+    fn push_back_0(&mut self, a: Card, b: Card) {
+        debug_assert!((self.len_0() as usize) + (self.len_1() as usize) < DECK_SIZE - 2);
+        let idx = self.len_0() as usize;
+        self.cards = self.cards.replace(idx, a).replace(idx + 1, b);
+    }
+
+    fn push_back_1(&mut self, a: Card, b: Card) {
+        debug_assert!((self.len_0() as usize) + (self.len_1() as usize) < DECK_SIZE - 2);
+        let idx = DECK_SIZE - 1 - self.len_1() as usize;
+        self.cards = self.cards.replace(idx, a).replace(idx - 1, b);
+    }
+
+    fn pop_both(&mut self) -> (Card, Card) {
+        let card_0 = self.cards.extract(0);
+        let card_1 = self.cards.extract(63);
+        debug_assert!(card_0 != NO_CARD);
+        debug_assert!(card_1 != NO_CARD);
+        let popped_0 = shuffle!(self.cards, [
+            01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16,
+            17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+            33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+            49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 63
+        ]);
+        let popped_1 = shuffle!(self.cards, [
+            00, 00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14,
+            15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+            31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
+            47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62
+        ]);
+        // TODO can be optimized
+        self.cards =
+            CARD_INDICES_0.lt(Cards::splat(self.len_0() as u8 - 1)).select(popped_0, NO_CARDS) |
+            CARD_INDICES_1.lt(Cards::splat(self.len_1() as u8 - 1)).select(popped_1, NO_CARDS);
+        (card_0, card_1)
+    }
+
+    fn tops(&self, count_0: u8, count_1: u8) -> Decks {
+        debug_assert!(count_0 as u32 <= self.len_0());
+        debug_assert!(count_1 as u32 <= self.len_1());
+        let mask =
+            CARD_INDICES_0.lt(Cards::splat(count_0)) |
+            CARD_INDICES_1.lt(Cards::splat(count_1));
+        Decks { cards: mask.select(self.cards, NO_CARDS) }
     }
 }
 
-impl Deck {
-    fn is_empty(&self) -> bool {
-        self.cards == NO_CARDS
-    }
+#[test]
+fn test_deck_queries() {
+    let empty_both = Decks::new(&[], &[]);
+    assert!(empty_both.is_any_empty());
+    assert!(empty_both.is_empty_0());
+    assert!(empty_both.is_empty_1());
+    assert_eq!(empty_both.len_0(), 0);
+    assert_eq!(empty_both.len_1(), 0);
+    assert_eq!(empty_both.cards_0(), Vec::<Card>::new());
+    assert_eq!(empty_both.cards_1(), Vec::<Card>::new());
 
-    fn len(&self) -> usize {
-        self.cards.ne(NO_CARDS).bitmask().count_ones() as usize
-    }
+    let empty_0 = Decks::new(&[], &[42]);
+    assert!(empty_0.is_any_empty());
+    assert!(empty_0.is_empty_0());
+    assert!(!empty_0.is_empty_1());
+    assert_eq!(empty_0.len_0(), 0);
+    assert_eq!(empty_0.len_1(), 1);
+    assert_eq!(empty_0.cards_0(), Vec::<Card>::new());
+    assert_eq!(empty_0.cards_1(), vec![42]);
 
-    fn iter(&self) -> DeckIterator {
-        DeckIterator {
-            cards: self.cards,
-        }
-    }
+    let empty_1 = Decks::new(&[42], &[]);
+    assert!(empty_1.is_any_empty());
+    assert!(!empty_1.is_empty_0());
+    assert!(empty_1.is_empty_1());
+    assert_eq!(empty_1.len_0(), 1);
+    assert_eq!(empty_1.len_1(), 0);
+    assert_eq!(empty_1.cards_0(), vec![42]);
+    assert_eq!(empty_1.cards_1(), Vec::<Card>::new());
 
-    fn push_back(&mut self, card: Card) {
-        debug_assert!(self.len() < DECK_SIZE - 1);
-        self.cards = self.cards.replace(self.len(), card);
-    }
+    let empty_neither = Decks::new(&[42], &[37]);
+    assert!(!empty_neither.is_any_empty());
+    assert!(!empty_neither.is_empty_0());
+    assert!(!empty_neither.is_empty_1());
+    assert_eq!(empty_neither.len_0(), 1);
+    assert_eq!(empty_neither.len_1(), 1);
+    assert_eq!(empty_neither.cards_0(), vec![42]);
+    assert_eq!(empty_neither.cards_1(), vec![37]);
 
-    fn pop_front(&mut self) -> Card {
-        let card = self.cards.extract(0);
-        debug_assert!(card != NO_CARD);
-        self.cards = drop_first(self.cards);
-        card
-    }
-
-    fn top(&self, count: usize) -> Deck {
-        debug_assert!(count <= self.len());
-        let cards = CARD_INDICES
-            .lt(Cards::splat(count as u8))
-            .select(self.cards, NO_CARDS);
-        Deck {
-            cards,
-        }
-    }
+    let decks = Decks::new(&[1, 2, 3], &[4, 5, 6]);
+    assert!(!decks.is_any_empty());
+    assert!(!decks.is_empty_0());
+    assert!(!decks.is_empty_1());
+    assert_eq!(decks.len_0(), 3);
+    assert_eq!(decks.len_1(), 3);
+    assert_eq!(decks.cards_0(), vec![1, 2, 3]);
+    assert_eq!(decks.cards_1(), vec![4, 5, 6]);
 }
 
-fn drop_first(cards: Cards) -> Cards {
-    debug_assert!(cards.extract(0) != NO_CARD);
-    debug_assert!(cards.extract(DECK_SIZE - 1) == NO_CARD);
-    shuffle!(cards, [
-        01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16,
-        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-        33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
-        49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 63
-    ])
-}
-
-impl Debug for Deck {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        for i in 0..self.len() {
-            if i != 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{:?}", self.cards.extract(i))?;
-        }
-        Ok(())
-    }
-}
-
-impl PartialEq for Deck {
-    fn eq(&self, other: &Deck) -> bool {
-        self.cards == other.cards
-    }
-}
-
-impl Eq for Deck {}
-
-struct DeckIterator {
-    cards: Cards,
-}
-
-impl Iterator for DeckIterator {
-    type Item = Card;
-
-    fn next(&mut self) -> Option<Card> {
-        if self.cards == NO_CARDS {
-            None
-        } else {
-            let result = Some(self.cards.extract(0));
-            self.cards = drop_first(self.cards);
-            result
-        }
-    }
-}
-
-type Decks = [Deck; 2];
-
-fn parse(input: &str) -> Decks {
-     let mut decks = input
-        .split("\n\n")
-        .map(|block| {
-            block
-                .lines()
-                .skip(1)
-                .map(|line| line.parse::<Card>().unwrap())
-                .collect::<Deck>()
-        });
-     [decks.next().unwrap(), decks.next().unwrap()]
-}
-
-fn score(deck: &Deck) -> u64 {
-    deck.iter()
-        .collect::<Vec<_>>() // Too lazy to implement DoubleEndedIterator for DeckIterator.
-        .iter()
+fn score(cards: Vec<Card>) -> u64 {
+    cards
+        .into_iter()
         .rev()
         .zip(1..)
-        .map(|(&c, i)| c as u64 * i as u64)
+        .map(|(c, i)| c as u64 * i as u64)
         .sum()
 }
 
 fn part1(input: &str) -> u64 {
-    let mut decks = parse(input);
+    let mut decks = Decks::parse(input);
 
-    while !decks[0].is_empty() && !decks[1].is_empty() {
-        let card0 = decks[0].pop_front();
-        let card1 = decks[1].pop_front();
-        if card0 > card1 {
-            decks[0].push_back(card0);
-            decks[0].push_back(card1);
+    while !decks.is_any_empty() {
+        let (card_0, card_1) = decks.pop_both();
+        if card_0 > card_1 {
+            decks.push_back_0(card_0, card_1);
         } else {
-            debug_assert!(card0 < card1);
-            decks[1].push_back(card1);
-            decks[1].push_back(card0);
+            debug_assert!(card_0 < card_1);
+            decks.push_back_1(card_1, card_0);
         }
     }
 
-    score(&decks[0]) + score(&decks[1])
+    score(decks.cards_0()) + score(decks.cards_1())
 }
 
 #[test]
@@ -180,13 +216,10 @@ fn test_part1() {
     assert_eq!(part1(&aoc::input()), 33098);
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct HashDecks(Decks);
-
-impl Hash for HashDecks {
+impl Hash for Decks {
     fn hash<H: Hasher>(&self, h: &mut H) {
         unsafe {
-            std::mem::transmute::<&Decks, &[u8; 128]>(&self.0).hash(h)
+            std::mem::transmute::<&Cards, &[u8; 64]>(&self.cards).hash(h)
         }
     }
 }
@@ -195,18 +228,17 @@ fn recursive_game(mut decks: Decks) -> (usize, Decks) {
     let mut prev_states = HashSet::with_capacity_and_hasher(
         512, BuildHasherDefault::<rustc_hash::FxHasher>::default());
     
-    while !decks[0].is_empty() && !decks[1].is_empty() {
+    while !decks.is_any_empty() {
         // Before either player deals a card, if there was a previous round in this game that had
         // exactly the same cards in the same order in the same players' decks, the game instantly
         // ends in a win for player 1.
-        if !prev_states.insert(HashDecks(decks.clone())) {
+        if !prev_states.insert(decks.clone()) {
             return (0, decks);
         }
         // Otherwise, this round's cards must be in a new configuration; the players begin the
         // round by each drawing the top card of their deck as normal.
-        let card0 = decks[0].pop_front();
-        let card1 = decks[1].pop_front();
-        let round_winner = if decks[0].len() as Card >= card0 && decks[1].len() as Card >= card1 {
+        let (card_0, card_1) = decks.pop_both();
+        let round_winner = if decks.len_0() as Card >= card_0 && decks.len_1() as Card >= card_1 {
             // If both players have at least as many cards remaining in their deck as the value of
             // the card they just drew, the winner of the round is determined by playing a new game
             // of Recursive Combat.
@@ -214,49 +246,44 @@ fn recursive_game(mut decks: Decks) -> (usize, Decks) {
             // To play a sub-game of Recursive Combat, each player creates a new deck by making a
             // copy of the next cards in their deck (the quantity of cards copied is equal to the
             // number on the card they drew to trigger the sub-game).
-            let (subgame_winner, _) = recursive_game([
-                decks[0].top(card0 as usize),
-                decks[1].top(card1 as usize),
-            ]);
+            let (subgame_winner, _) = recursive_game(decks.tops(card_0, card_1));
             subgame_winner
         } else {
             // Otherwise, at least one player must not have enough cards left in their deck to
             // recurse; the winner of the round is the player with the higher-value card.
-            if card0 > card1 {
+            if card_0 > card_1 {
                 0
             } else {
-                debug_assert!(card0 < card1);
+                debug_assert!(card_0 < card_1);
                 1
             }
         };
         match round_winner {
-            0 => {
-                decks[0].push_back(card0);
-                decks[0].push_back(card1);
-            },
-            1 => {
-                decks[1].push_back(card1);
-                decks[1].push_back(card0);
-            },
+            0 => decks.push_back_0(card_0, card_1),
+            1 => decks.push_back_1(card_1, card_0),
             _ => panic!(),
         }
     }
 
-    let game_winner = if decks[1].is_empty() {
+    let game_winner = if decks.is_empty_1() {
         0
     } else {
-        debug_assert!(decks[0].is_empty());
+        debug_assert!(decks.is_empty_0());
         1
     };
     (game_winner, decks)
 }
 
 fn part2(input: &str) -> u64 {
-    let decks = parse(input);
+    let decks = Decks::parse(input);
 
     let (winner, decks) = recursive_game(decks);
 
-    score(&decks[winner])
+    match winner {
+        0 => score(decks.cards_0()),
+        1 => score(decks.cards_1()),
+        _ => panic!(),
+    }
 }
 
 #[test]
