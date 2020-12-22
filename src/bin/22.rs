@@ -37,12 +37,12 @@ impl Decks {
             .lines().skip(1)
             .map(|line| line.parse::<Card>().unwrap())
             .enumerate()
-            .fold(NO_CARDS, |cards, (i, card)| cards.replace(i, card));
+            .fold(NO_CARDS, |cards, (i, card)| unsafe { cards.replace_unchecked(i, card) });
         let cards_1 = blocks.next().unwrap()
             .lines().skip(1)
             .map(|line| line.parse::<Card>().unwrap())
             .enumerate()
-            .fold(NO_CARDS, |cards, (i, card)| cards.replace(DECK_SIZE - 1 - i, card));
+            .fold(NO_CARDS, |cards, (i, card)| unsafe { cards.replace_unchecked(DECK_SIZE - 1 - i, card) });
         Decks { cards: cards_0 | cards_1 }
     }
 
@@ -98,13 +98,13 @@ impl Decks {
     fn push_back_0(&mut self, a: Card, b: Card) {
         debug_assert!((self.len_0() as usize) + (self.len_1() as usize) < DECK_SIZE - 2);
         let idx = self.len_0() as usize;
-        self.cards = self.cards.replace(idx, a).replace(idx + 1, b);
+        self.cards = unsafe { self.cards.replace_unchecked(idx, a).replace_unchecked(idx + 1, b) };
     }
 
     fn push_back_1(&mut self, a: Card, b: Card) {
         debug_assert!((self.len_0() as usize) + (self.len_1() as usize) < DECK_SIZE - 2);
         let idx = DECK_SIZE - 1 - self.len_1() as usize;
-        self.cards = self.cards.replace(idx, a).replace(idx - 1, b);
+        self.cards = unsafe { self.cards.replace_unchecked(idx, a).replace_unchecked(idx - 1, b) };
     }
 
     fn pop_both(&mut self) -> (Card, Card) {
