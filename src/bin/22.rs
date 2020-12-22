@@ -1,3 +1,4 @@
+use fxhash::FxBuildHasher;
 use packed_simd::{shuffle, Simd};
 use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
@@ -180,7 +181,7 @@ fn test_part1() {
 }
 
 fn recursive_game(mut decks: Decks) -> (usize, Decks) {
-    let mut prev_states = HashSet::with_capacity(512);
+    let mut prev_states = HashSet::with_capacity_and_hasher(512, FxBuildHasher::default());
     
     while !decks[0].is_empty() && !decks[1].is_empty() {
         // Before either player deals a card, if there was a previous round in this game that had
