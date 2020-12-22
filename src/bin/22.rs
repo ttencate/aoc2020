@@ -1,7 +1,7 @@
 use packed_simd::{shuffle, Simd};
 use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
-use std::hash::BuildHasherDefault;
+use std::hash::{BuildHasherDefault, Hash, Hasher};
 use std::iter::FromIterator;
 
 type Card = u8;
@@ -14,7 +14,7 @@ const DECK_SIZE: usize = 64;
 type Cards = Simd<[Card; DECK_SIZE]>;
 
 // Like VecDeque but fixed size, so no indirection needed.
-#[derive(Clone, Hash)]
+#[derive(Clone)]
 struct Deck {
     cards: Cards,
 }
@@ -180,6 +180,17 @@ fn test_part1() {
     assert_eq!(part1(&aoc::input()), 33098);
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct HashDecks(Decks);
+
+impl Hash for HashDecks {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        unsafe {
+            std::mem::transmute::<&Decks, &[u8; 128]>(&self.0).hash(h)
+        }
+    }
+}
+
 fn recursive_game(mut decks: Decks) -> (usize, Decks) {
     let mut prev_states = HashSet::with_capacity_and_hasher(
         512, BuildHasherDefault::<rustc_hash::FxHasher>::default());
@@ -188,7 +199,7 @@ fn recursive_game(mut decks: Decks) -> (usize, Decks) {
         // Before either player deals a card, if there was a previous round in this game that had
         // exactly the same cards in the same order in the same players' decks, the game instantly
         // ends in a win for player 1.
-        if !prev_states.insert(decks.clone()) {
+        if !prev_states.insert(HashDecks(decks.clone())) {
             return (0, decks);
         }
         // Otherwise, this round's cards must be in a new configuration; the players begin the
