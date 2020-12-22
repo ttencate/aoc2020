@@ -64,11 +64,11 @@ impl Decks {
     }
 
     fn is_empty_0(&self) -> bool {
-        self.cards.extract(0) == NO_CARD
+        NO_CARD == unsafe { self.cards.extract_unchecked(0) }
     }
 
     fn is_empty_1(&self) -> bool {
-        self.cards.extract(DECK_SIZE - 1) == NO_CARD
+        NO_CARD == unsafe { self.cards.extract_unchecked(DECK_SIZE - 1) }
     }
 
     fn len_0(&self) -> u32 {
@@ -81,13 +81,17 @@ impl Decks {
 
     fn cards_0(&self) -> Vec<Card> {
         let mut cards = [NO_CARD; DECK_SIZE];
-        self.cards.write_to_slice_unaligned(&mut cards);
+        unsafe {
+            self.cards.write_to_slice_unaligned_unchecked(&mut cards);
+        }
         cards.iter().copied().take_while(|&card| card != NO_CARD).collect()
     }
 
     fn cards_1(&self) -> Vec<Card> {
         let mut cards = [NO_CARD; DECK_SIZE];
-        self.cards.write_to_slice_unaligned(&mut cards);
+        unsafe {
+            self.cards.write_to_slice_unaligned_unchecked(&mut cards);
+        }
         cards.iter().copied().rev().take_while(|&card| card != NO_CARD).collect()
     }
 
@@ -104,8 +108,8 @@ impl Decks {
     }
 
     fn pop_both(&mut self) -> (Card, Card) {
-        let card_0 = self.cards.extract(0);
-        let card_1 = self.cards.extract(63);
+        let card_0 = unsafe { self.cards.extract_unchecked(0) };
+        let card_1 = unsafe { self.cards.extract_unchecked(63) };
         debug_assert!(card_0 != NO_CARD);
         debug_assert!(card_1 != NO_CARD);
         let popped_0 = shuffle!(self.cards, [
