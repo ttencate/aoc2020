@@ -180,7 +180,7 @@ fn test_part1() {
 }
 
 fn recursive_game(mut decks: Decks) -> (usize, Decks) {
-    let mut prev_states = HashSet::new();
+    let mut prev_states = HashSet::with_capacity(512);
     
     while !decks[0].is_empty() && !decks[1].is_empty() {
         // Before either player deals a card, if there was a previous round in this game that had
