@@ -125,9 +125,9 @@ impl Decks {
             47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62
         ]);
         // TODO can be optimized
-        self.cards =
-            CARD_INDICES_0.lt(Cards::splat(self.len_0() as u8 - 1)).select(popped_0, NO_CARDS) |
-            CARD_INDICES_1.lt(Cards::splat(self.len_1() as u8 - 1)).select(popped_1, NO_CARDS);
+        self.cards = CARD_INDICES_0.lt(Cards::splat(self.len_0() as u8 - 1)).select(
+            popped_0,
+            CARD_INDICES_1.lt(Cards::splat(self.len_1() as u8 - 1)).select(popped_1, NO_CARDS));
         (card_0, card_1)
     }
 
