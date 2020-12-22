@@ -15,7 +15,6 @@ type Cards = Simd<[Card; DECK_SIZE]>;
 // Like VecDeque but fixed size, so no indirection needed.
 #[derive(Clone, Hash)]
 struct Deck {
-    n: usize,
     cards: Cards,
 }
 
@@ -38,7 +37,6 @@ impl FromIterator<Card> for Deck {
         }
         debug_assert!(i < DECK_SIZE - 1);
         Deck {
-            n: i,
             cards,
         }
     }
@@ -46,11 +44,11 @@ impl FromIterator<Card> for Deck {
 
 impl Deck {
     fn is_empty(&self) -> bool {
-        self.n == 0
+        self.cards == NO_CARDS
     }
 
     fn len(&self) -> usize {
-        self.n
+        self.cards.ne(NO_CARDS).bitmask().count_ones() as usize
     }
 
     fn iter(&self) -> DeckIterator {
@@ -60,32 +58,31 @@ impl Deck {
     }
 
     fn push_back(&mut self, card: Card) {
-        debug_assert!(self.n < DECK_SIZE);
-        self.cards = self.cards.replace(self.n, card);
-        self.n += 1;
+        debug_assert!(self.len() < DECK_SIZE - 1);
+        self.cards = self.cards.replace(self.len(), card);
     }
 
     fn pop_front(&mut self) -> Card {
-        debug_assert!(self.n > 0);
         let card = self.cards.extract(0);
-        self.n -= 1;
+        debug_assert!(card != NO_CARD);
         self.cards = drop_first(self.cards);
         card
     }
 
     fn top(&self, count: usize) -> Deck {
-        debug_assert!(count <= self.n);
-        let cards = CARD_INDICES.lt(Cards::splat(count as u8))
+        debug_assert!(count <= self.len());
+        let cards = CARD_INDICES
+            .lt(Cards::splat(count as u8))
             .select(self.cards, NO_CARDS);
         Deck {
-            n: count,
             cards,
         }
     }
 }
 
 fn drop_first(cards: Cards) -> Cards {
-    debug_assert!(cards.extract(DECK_SIZE - 1) == 0);
+    debug_assert!(cards.extract(0) != NO_CARD);
+    debug_assert!(cards.extract(DECK_SIZE - 1) == NO_CARD);
     shuffle!(cards, [
         01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16,
         17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
@@ -96,7 +93,7 @@ fn drop_first(cards: Cards) -> Cards {
 
 impl Debug for Deck {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        for i in 0..self.n {
+        for i in 0..self.len() {
             if i != 0 {
                 write!(f, ", ")?;
             }
@@ -108,7 +105,7 @@ impl Debug for Deck {
 
 impl PartialEq for Deck {
     fn eq(&self, other: &Deck) -> bool {
-        self.n == other.n && self.cards == other.cards
+        self.cards == other.cards
     }
 }
 
