@@ -1,35 +1,44 @@
+use packed_simd::{shuffle, Simd};
 use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
-use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 
 type Card = u8;
 
+const NO_CARD: Card = 0;
+
 // There are 50 cards. We can hold at most DECK_SIZE - 1 and it must be a power of two.
 const DECK_SIZE: usize = 64;
-const DECK_MASK: usize = DECK_SIZE - 1;
+
+type Cards = Simd<[Card; DECK_SIZE]>;
 
 // Like VecDeque but fixed size, so no indirection needed.
-#[derive(Clone)]
+#[derive(Clone, Hash)]
 struct Deck {
-    start: usize,
-    end: usize,
-    cards: [Card; DECK_SIZE],
+    n: usize,
+    cards: Cards,
 }
+
+const NO_CARDS: Cards = Cards::splat(NO_CARD);
+
+const CARD_INDICES: Cards = Cards::new(
+    00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15,
+    16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+    32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+    48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63);
 
 impl FromIterator<Card> for Deck {
     fn from_iter<I: IntoIterator<Item = Card>>(iter: I) -> Deck {
         let mut iter = iter.into_iter();
         let mut i = 0;
-        let mut cards = [0; DECK_SIZE];
+        let mut cards = NO_CARDS;
         while let Some(card) = iter.next() {
-            cards[i] = card;
+            cards = cards.replace(i, card);
             i += 1;
         }
         debug_assert!(i < DECK_SIZE - 1);
         Deck {
-            start: 0,
-            end: i,
+            n: i,
             cards,
         }
     }
@@ -37,55 +46,61 @@ impl FromIterator<Card> for Deck {
 
 impl Deck {
     fn is_empty(&self) -> bool {
-        self.start == self.end
+        self.n == 0
     }
 
     fn len(&self) -> usize {
-        if self.start <= self.end {
-            self.end - self.start
-        } else {
-            DECK_SIZE - self.start + self.end
-        }
+        self.n
     }
 
-    fn iter<'a>(&'a self) -> DeckIterator<'a> {
+    fn iter(&self) -> DeckIterator {
         DeckIterator {
-            deck: self,
-            i: self.start,
+            cards: self.cards,
         }
     }
 
     fn push_back(&mut self, card: Card) {
-        self.cards[self.end] = card;
-        self.end = (self.end + 1) & DECK_MASK;
+        debug_assert!(self.n < DECK_SIZE);
+        self.cards = self.cards.replace(self.n, card);
+        self.n += 1;
     }
 
     fn pop_front(&mut self) -> Card {
-        let card = self.cards[self.start];
-        self.start = (self.start + 1) & DECK_MASK;
+        debug_assert!(self.n > 0);
+        let card = self.cards.extract(0);
+        self.n -= 1;
+        self.cards = drop_first(self.cards);
         card
     }
 
     fn top(&self, count: usize) -> Deck {
+        debug_assert!(count <= self.n);
+        let cards = CARD_INDICES.lt(Cards::splat(count as u8))
+            .select(self.cards, NO_CARDS);
         Deck {
-            start: self.start,
-            end: (self.start + count) & DECK_MASK,
-            cards: self.cards.clone(),
+            n: count,
+            cards,
         }
     }
 }
 
+fn drop_first(cards: Cards) -> Cards {
+    debug_assert!(cards.extract(DECK_SIZE - 1) == 0);
+    shuffle!(cards, [
+        01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16,
+        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+        33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+        49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 63
+    ])
+}
+
 impl Debug for Deck {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        let mut i = self.start;
-        let mut prepend_comma = false;
-        while i != self.end {
-            if prepend_comma {
+        for i in 0..self.n {
+            if i != 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{:?}", self.cards[i])?;
-            i = (i + 1) & DECK_MASK;
-            prepend_comma = true;
+            write!(f, "{:?}", self.cards.extract(i))?;
         }
         Ok(())
     }
@@ -93,49 +108,25 @@ impl Debug for Deck {
 
 impl PartialEq for Deck {
     fn eq(&self, other: &Deck) -> bool {
-        if self.len() != other.len() {
-            return false;
-        }
-        let mut i = self.start;
-        let mut j = other.start;
-        while i != self.end {
-            if self.cards[i] != other.cards[j] {
-                return false;
-            }
-            i = (i + 1) & DECK_MASK;
-            j = (j + 1) & DECK_MASK;
-        }
-        true
-    }
-}
-
-impl Hash for Deck {
-    fn hash<H: Hasher>(&self, hasher: &mut H) {
-        self.len().hash(hasher);
-        let mut i = self.start;
-        while i != self.end {
-            self.cards[i].hash(hasher);
-            i = (i + 1) & DECK_MASK;
-        }
+        self.n == other.n && self.cards == other.cards
     }
 }
 
 impl Eq for Deck {}
 
-struct DeckIterator<'a> {
-    deck: &'a Deck,
-    i: usize,
+struct DeckIterator {
+    cards: Cards,
 }
 
-impl<'a> Iterator for DeckIterator<'a> {
+impl Iterator for DeckIterator {
     type Item = Card;
 
     fn next(&mut self) -> Option<Card> {
-        if self.i == self.deck.end {
+        if self.cards == NO_CARDS {
             None
         } else {
-            let result = Some(self.deck.cards[self.i]);
-            self.i = (self.i + 1) & DECK_MASK;
+            let result = Some(self.cards.extract(0));
+            self.cards = drop_first(self.cards);
             result
         }
     }
@@ -158,7 +149,7 @@ fn parse(input: &str) -> Decks {
 
 fn score(deck: &Deck) -> u64 {
     deck.iter()
-        .collect::<Vec<_>>() // TODO implement DoubleEndedIterator for DeckIterator
+        .collect::<Vec<_>>() // Too lazy to implement DoubleEndedIterator for DeckIterator.
         .iter()
         .rev()
         .zip(1..)
