@@ -35,41 +35,33 @@ impl std::fmt::Display for Cup {
     }
 }
 
-struct Node {
-    prev: Cup,
-    next: Cup,
-}
-
 struct Cups {
-    nodes: Vec<Node>,
+    next: Vec<Cup>,
 }
 
 impl Cups {
     fn new(cups: &[Cup]) -> Cups {
         let num_cups = cups.len();
-        let mut nodes = (0..num_cups)
-            .map(|idx| Node { prev: Cup::from_index(idx), next: Cup::from_index(idx) })
+        let mut next = (0..num_cups)
+            .map(|idx| Cup::from_index(idx))
             .collect::<Vec<_>>();
         for i in 0..(num_cups - 1) {
-            nodes[cups[i + 1].index()].prev = cups[i];
-            nodes[cups[i].index()].next = cups[i + 1];
+            next[cups[i].index()] = cups[i + 1];
         }
-        nodes[cups[0].index()].prev = cups[num_cups - 1];
-        nodes[cups[num_cups - 1].index()].next = cups[0];
-        Cups { nodes }
+        next[cups[num_cups - 1].index()] = cups[0];
+        Cups { next }
     }
 
     fn num_cups(&self) -> usize {
-        self.nodes.len()
+        self.next.len()
     }
 
     fn next(&self, cup: Cup) -> Cup {
-        self.nodes[cup.index()].next
+        self.next[cup.index()]
     }
 
     fn link(&mut self, a: Cup, b: Cup) {
-        self.nodes[a.index()].next = b;
-        self.nodes[b.index()].prev = a;
+        self.next[a.index()] = b;
     }
 
     fn iter_from<'a>(&'a self, from: Cup) -> CupsIterator<'a> {
