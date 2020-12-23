@@ -1,15 +1,15 @@
 use itertools::Itertools;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Cup(usize);
+struct Cup(u32);
 
 impl Cup {
-    fn from_label(label: usize) -> Cup {
-        Cup(label - 1)
+    fn from_index(index: usize) -> Cup {
+        Cup(index as u32)
     }
 
-    fn from_index(index: usize) -> Cup {
-        Cup(index)
+    fn from_label(label: usize) -> Cup {
+        Self::from_index(label - 1)
     }
 
     fn from_digit(digit: char) -> Cup {
@@ -17,14 +17,14 @@ impl Cup {
     }
 
     fn index(self) -> usize {
-        self.0
+        self.0 as usize
     }
     
-    fn label(self) -> usize {
+    fn label(self) -> u32 {
         self.0 + 1
     }
 
-    fn minus_one(self, num_cups: usize) -> Cup {
+    fn minus_one(self, num_cups: u32) -> Cup {
         Cup((self.0 + num_cups - 1) % num_cups)
     }
 }
@@ -96,7 +96,7 @@ impl Iterator for CupsIterator<'_> {
 }
 
 fn play(cups: &mut Cups, mut curr: Cup, num_rounds: usize) {
-    let num_cups = cups.num_cups();
+    let num_cups = cups.num_cups() as u32;
     for _ in 0..num_rounds {
         let a = cups.next(curr);
         let b = cups.next(a);
